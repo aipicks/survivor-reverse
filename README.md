@@ -20,21 +20,32 @@ In Firestore → **Rules**, paste this and publish. Because real accounts exist 
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Keep this in sync with ADMIN_EMAILS in js/app.js.
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email in ['edenchaz@gmail.com'];
+    }
+
     match /players/{playerId} {
       allow read: if true;
-      // You can only ever create/edit your own player doc, and only under your own account's uid.
-      allow create, update: if request.auth != null && request.auth.uid == playerId;
-      allow delete: if false;
+      // You can create your own player doc; admins can edit/remove any player doc.
+      allow create: if request.auth != null && request.auth.uid == playerId;
+      allow update: if (request.auth != null && request.auth.uid == playerId) || isAdmin();
+      allow delete: if isAdmin();
     }
     match /picks/{pickId} {
       allow read: if true;
-      // You can only write a pick that's recorded under your own uid.
-      allow create, update: if request.auth != null && request.auth.uid == request.resource.data.playerId;
-      allow delete: if false;
+      // You can write your own pick; admins can set or clear anyone's pick (for fixing mistakes).
+      allow create, update: if (request.auth != null && request.auth.uid == request.resource.data.playerId) || isAdmin();
+      allow delete: if isAdmin();
     }
     match /odds/{oddsId} {
       allow read: if true;
       allow create, update: if request.auth != null; // any signed-in player can enter/correct odds
+      allow delete: if false;
+    }
+    match /config/{doc} {
+      allow read: if true;
+      allow create, update: if request.auth != null; // gated to admins in the UI, not by rule
       allow delete: if false;
     }
   }

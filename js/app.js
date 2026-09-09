@@ -93,7 +93,7 @@ async function init() {
     document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     state.activeView = btn.dataset.view;
-    const hideWeekTabs = state.activeView === "standings" || state.activeView === "admin";
+    const hideWeekTabs = state.activeView === "standings";
     document.getElementById("weekTabs").style.display = hideWeekTabs ? "none" : "flex";
     render();
   });
@@ -494,22 +494,122 @@ function render() {
   if (state.activeView === "admin") return renderAdmin(content);
 }
 
+async function adminDeletePlayer(playerId, name) {
+  if (!confirm(`Remove ${name} from the pool? Their pick history stays in Firestore but they'll drop off Standings.`)) return;
+  try {
+    await db.collection("players").doc(playerId).delete();
+    toast(`Removed ${name}.`);
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+async function adminSetPick(playerId, week, gameId, teamAbbr) {
+  const games = state.weekCache[week];
+  const game = games && games.find(g => g.id === gameId);
+  if (!game) return;
+  const team = game.home.abbr === teamAbbr ? game.home : game.away;
+  const opp = game.home.abbr === teamAbbr ? game.away : game.home;
+  try {
+    await db.collection("picks").doc(`${playerId}_${week}`).set({
+      playerId, week, gameId, teamAbbr, oppAbbr: opp.abbr, gameDate: game.date,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    toast(`Set to ${team.name} to lose.`);
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+async function adminClearPick(playerId, week) {
+  try {
+    await db.collection("picks").doc(`${playerId}_${week}`).delete();
+    toast("Pick cleared.");
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+async function adminEditOdds(week, awayAbbr, homeAbbr, awayName, homeName) {
+  const key = `${week}_${awayAbbr}_${homeAbbr}`;
+  const current = state.allOdds[key] || FALLBACK_ODDS[key] || {};
+
+  const awaySpread = prompt(`${awayName} spread (e.g. +3 (-105)):`, current.awaySpread || "");
+  if (awaySpread === null) return;
+  const awayML = prompt(`${awayName} moneyline (e.g. +153):`, current.awayML || "");
+  if (awayML === null) return;
+  const homeSpread = prompt(`${homeName} spread (e.g. -3 (-115)):`, current.homeSpread || "");
+  if (homeSpread === null) return;
+  const homeML = prompt(`${homeName} moneyline (e.g. -175):`, current.homeML || "");
+  if (homeML === null) return;
+
+  try {
+    await db.collection("odds").doc(key).set({ awaySpread, awayML, homeSpread, homeML });
+    toast("Odds saved.");
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
 function renderAdmin(content) {
   if (!isAdmin()) { content.innerHTML = '<div class="hint">Not authorized.</div>'; return; }
 
+  const week = state.activeWeek;
+  const games = state.weekCache[week] || [];
+
+  const gameOptions = (currentGameId, currentTeamAbbr) => games.map(g => `
+    <option value="${g.id}|${g.away.abbr}" ${g.id === currentGameId && g.away.abbr === currentTeamAbbr ? "selected" : ""}>${g.away.name} (@ ${g.home.name})</option>
+    <option value="${g.id}|${g.home.abbr}" ${g.id === currentGameId && g.home.abbr === currentTeamAbbr ? "selected" : ""}>${g.home.name} (vs ${g.away.name})</option>
+  `).join("");
+
   content.innerHTML = `
-    <div class="section-title">Admin</div>
+    <div class="section-title">Current week</div>
     <div class="standings-row">
-      <div class="standings-main">
-        <div class="standings-name">Current week</div>
-      </div>
       <div class="standings-pick">ESPN auto-detected: Week ${state.espnWeek}${state.weekOverride ? ` — currently overridden to Week ${state.weekOverride}` : " (no override set)"}</div>
       <div class="admin-controls">
         <input id="weekOverrideInput" type="number" min="1" max="${TOTAL_WEEKS}" placeholder="e.g. 3" class="auth-input" style="width:90px" value="${state.weekOverride || ""}" />
         <button id="saveWeekOverrideBtn" class="btn-primary">Set override</button>
         ${state.weekOverride ? '<button id="clearWeekOverrideBtn" class="btn-ghost">Clear override</button>' : ""}
       </div>
-    </div>`;
+    </div>
+
+    <div class="section-title">Players</div>
+    ${state.players.map(p => `
+      <div class="standings-row">
+        <div class="standings-main">
+          <div class="standings-name">${p.name}</div>
+          <button class="btn-ghost" data-delete-player="${p.id}" data-name="${p.name}">Remove</button>
+        </div>
+      </div>`).join("") || '<div class="hint">No players yet.</div>'}
+
+    <div class="section-title">Picks — Week ${week}</div>
+    ${state.players.map(p => {
+      const pick = getPick(p.id, week);
+      return `
+      <div class="standings-row">
+        <div class="standings-main">
+          <div class="standings-name">${p.name}</div>
+        </div>
+        <div class="admin-controls">
+          <select class="auth-input" data-pick-select="${p.id}">
+            <option value="">— no pick —</option>
+            ${gameOptions(pick && pick.gameId, pick && pick.teamAbbr)}
+          </select>
+          <button class="btn-primary" data-set-pick="${p.id}">Set</button>
+          ${pick ? `<button class="btn-ghost" data-clear-pick="${p.id}">Clear</button>` : ""}
+        </div>
+      </div>`;
+    }).join("") || '<div class="hint">No players yet.</div>'}
+
+    <div class="section-title">Odds — Week ${week}</div>
+    ${games.map(g => `
+      <div class="standings-row">
+        <div class="standings-main">
+          <div class="standings-name">${g.away.name} @ ${g.home.name}</div>
+          <button class="btn-ghost" data-edit-odds-game="${g.id}">${getOdds(week, g.away.abbr, g.home.abbr) ? "Edit odds" : "+ Add odds"}</button>
+        </div>
+      </div>`).join("") || '<div class="hint">No games loaded for this week.</div>'}
+  `;
 
   document.getElementById("saveWeekOverrideBtn").addEventListener("click", async () => {
     const val = parseInt(document.getElementById("weekOverrideInput").value, 10);
@@ -522,9 +622,9 @@ function renderAdmin(content) {
     }
   });
 
-  const clearBtn = document.getElementById("clearWeekOverrideBtn");
-  if (clearBtn) {
-    clearBtn.addEventListener("click", async () => {
+  const clearWeekBtn = document.getElementById("clearWeekOverrideBtn");
+  if (clearWeekBtn) {
+    clearWeekBtn.addEventListener("click", async () => {
       try {
         await db.collection("config").doc("app").set({ currentWeekOverride: null });
         toast("Override cleared — back to ESPN auto-detection.");
@@ -533,6 +633,30 @@ function renderAdmin(content) {
       }
     });
   }
+
+  content.querySelectorAll("[data-delete-player]").forEach(btn => {
+    btn.addEventListener("click", () => adminDeletePlayer(btn.dataset.deletePlayer, btn.dataset.name));
+  });
+
+  content.querySelectorAll("[data-set-pick]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const select = content.querySelector(`[data-pick-select="${btn.dataset.setPick}"]`);
+      if (!select.value) { toast("Choose a team first."); return; }
+      const [gameId, teamAbbr] = select.value.split("|");
+      adminSetPick(btn.dataset.setPick, week, gameId, teamAbbr);
+    });
+  });
+
+  content.querySelectorAll("[data-clear-pick]").forEach(btn => {
+    btn.addEventListener("click", () => adminClearPick(btn.dataset.clearPick, week));
+  });
+
+  content.querySelectorAll("[data-edit-odds-game]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const game = games.find(g => g.id === btn.dataset.editOddsGame);
+      adminEditOdds(week, game.away.abbr, game.home.abbr, game.away.name, game.home.name);
+    });
+  });
 }
 
 function renderHome(content) {
