@@ -74,6 +74,18 @@ async function init() {
   listenToOdds();
   listenToAuth();
   listenToConfig();
+  renderInAppBrowserWarning();
+
+  // Surfaces errors from the signInWithRedirect flow (e.g. a blocked in-app browser) —
+  // onAuthStateChanged alone would just silently never fire with a user.
+  try {
+    auth.getRedirectResult().catch(e => {
+      console.error("Google redirect sign-in failed", e);
+      toast(e.message);
+    });
+  } catch (e) {
+    console.error("Could not check redirect result — is js/firebase-config.js set up?", e);
+  }
 
   try {
     const info = await fetchCurrentWeekInfo();
@@ -242,9 +254,20 @@ function updateAdminTabVisibility() {
 
 function listenToAuth() {
   try {
-    auth.onAuthStateChanged(user => {
+    auth.onAuthStateChanged(async user => {
       state.currentUser = user;
       state.playerId = user ? user.uid : "";
+      if (user) {
+        try {
+          const existing = await db.collection("players").doc(user.uid).get();
+          // New player: ask them to pick their own display name rather than assuming their Google name.
+          state.needsName = !existing.exists;
+        } catch (e) {
+          console.error("Could not check for existing player doc", e);
+        }
+      } else {
+        state.needsName = false;
+      }
       renderAccountBox();
       updateAdminTabVisibility();
       render();
@@ -255,16 +278,27 @@ function listenToAuth() {
   }
 }
 
-async function signInWithGoogle() {
-  try {
-    const cred = await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
-    const existing = await db.collection("players").doc(cred.user.uid).get();
-    // New player: ask them to pick their own display name rather than assuming their Google name.
-    state.needsName = !existing.exists;
-    renderAccountBox();
-  } catch (e) {
-    toast(e.message);
-  }
+// Redirect (not popup) — far more reliable on mobile, and degrades to a visible Google error
+// page instead of a silent blank-page hang inside in-app browsers (Instagram/Snapchat/TikTok/etc,
+// which Google blocks from completing sign-in at all — see isInAppBrowser() below).
+function signInWithGoogle() {
+  auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider()).catch(e => toast(e.message));
+}
+
+function isInAppBrowser() {
+  const ua = navigator.userAgent || "";
+  return /Instagram|FBAN|FBAV|Snapchat|Line\/|MicroMessenger|TikTok|BytedanceWebview/i.test(ua);
+}
+
+// Google refuses to complete sign-in inside these embedded browsers (its own security
+// policy, not something we can fix from our side) — warn people up front instead of
+// letting them hit a silent blank-page hang after tapping "Sign in with Google".
+function renderInAppBrowserWarning() {
+  if (!isInAppBrowser()) return;
+  const banner = document.createElement("div");
+  banner.className = "in-app-warning";
+  banner.textContent = "Google sign-in won't work inside this app's browser. Tap ⋯ or the share icon and choose \"Open in Chrome/Safari\", then sign in there.";
+  document.body.insertBefore(banner, document.body.firstChild);
 }
 
 async function saveDisplayName(name) {

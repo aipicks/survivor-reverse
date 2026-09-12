@@ -376,6 +376,18 @@ body {
   margin-bottom: 14px;
 }
 
+.in-app-warning {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--gold);
+  color: #1a1400;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  padding: 10px 16px;
+}
+
 .toast {
   position: fixed;
   bottom: 24px;
