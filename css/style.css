@@ -344,6 +344,35 @@ body {
   color: var(--text-dim);
 }
 
+.week-history {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.week-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.week-chip-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-faint);
+}
+
+.week-chip-mark {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.week-chip-ok { color: var(--win); }
+.week-chip-bad { color: var(--loss); }
+
 .admin-controls {
   display: flex;
   align-items: center;

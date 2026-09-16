@@ -847,10 +847,34 @@ function currentWeekPickLine(playerId) {
   return `Week ${week} pick: ${team.name}${mark}`;
 }
 
+// One chip per completed week (before the current one) — ✓ if they were still alive after that
+// week, ✗ if that's the week they got eliminated. Weeks after an elimination are left off.
+function weekHistoryChips(playerId) {
+  const chips = [];
+  for (let w = 1; w < state.currentWeek; w++) {
+    const games = state.weekCache[w];
+    if (!games || !games.length || !games.every(g => g.completed)) continue;
+
+    const pick = getPick(playerId, w);
+    let survived;
+    if (!pick) {
+      survived = false;
+    } else {
+      const game = games.find(g => g.id === pick.gameId);
+      if (!game) continue;
+      const team = game.home.abbr === pick.teamAbbr ? game.home : game.away;
+      survived = team.winner === false; // win or tie for the picked team = a miss
+    }
+    chips.push({ week: w, ok: survived });
+    if (!survived) break; // no further weeks matter once eliminated
+  }
+  return chips;
+}
+
 function renderStandings(content) {
   const rows = state.players.map(p => {
     const status = computePlayerStatus(p.id);
-    return { ...p, ...status, pickLine: currentWeekPickLine(p.id) };
+    return { ...p, ...status, pickLine: currentWeekPickLine(p.id), history: weekHistoryChips(p.id) };
   }).sort((a, b) => {
     if (a.eliminated !== b.eliminated) return a.eliminated ? 1 : -1;
     return (b.wins - b.losses) - (a.wins - a.losses);
@@ -865,6 +889,14 @@ function renderStandings(content) {
           <div class="${p.eliminated ? "status-dead" : "status-alive"}">${p.eliminated ? "Eliminated" : "Alive"}</div>
           <div class="record">${p.wins}-${p.losses}</div>
         </div>
+        ${p.history.length ? `
+          <div class="week-history">
+            ${p.history.map(h => `
+              <div class="week-chip">
+                <span class="week-chip-label">Week ${h.week}</span>
+                <span class="week-chip-mark ${h.ok ? "week-chip-ok" : "week-chip-bad"}">${h.ok ? "✓" : "✗"}</span>
+              </div>`).join("")}
+          </div>` : ""}
         ${p.pickLine ? `<div class="standings-pick">${p.pickLine}</div>` : ""}
       </div>`).join("")}`;
 }
