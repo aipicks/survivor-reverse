@@ -38,6 +38,23 @@ const FALLBACK_ODDS = {
   "1_GB_MIN": { awaySpread: "+1 (-105)", awayML: "+103", homeSpread: "-1 (-115)", homeML: "-123" },
   "1_DAL_NYG": { awaySpread: "-3 (-107)", awayML: "-158", homeSpread: "+3 (-113)", homeML: "+138" },
   "1_DEN_KC": { awaySpread: "+2.5 (-104)", awayML: "+125", homeSpread: "-2.5 (-116)", homeML: "-145" },
+
+  "2_CIN_HOU": { awaySpread: "+2.5 (+100)", awayML: "+128", homeSpread: "-2.5 (-120)", homeML: "-148" },
+  "2_NO_BAL": { awaySpread: "+9 (-121)", awayML: "+324", homeSpread: "-9 (+101)", homeML: "-410" },
+  "2_PHI_TEN": { awaySpread: "-7 (-113)", awayML: "-340", homeSpread: "+7 (-107)", homeML: "+274" },
+  "2_LV_LAC": { awaySpread: "+6.5 (-110)", awayML: "+237", homeSpread: "-6.5 (-110)", homeML: "-290" },
+  "2_JAX_DEN": { awaySpread: "+2.5 (+100)", awayML: "+133", homeSpread: "-2.5 (-120)", homeML: "-153" },
+  "2_WSH_DAL": { awaySpread: "+4 (-110)", awayML: "+180", homeSpread: "-4 (-110)", homeML: "-210" },
+  "2_SEA_ARI": { awaySpread: "-4 (-105)", awayML: "-195", homeSpread: "+4 (-115)", homeML: "+170" },
+  "2_MIA_SF": { awaySpread: "+13 (-105)", awayML: "+661", homeSpread: "-13 (-115)", homeML: "-1000" },
+  "2_IND_KC": { awaySpread: "+6.5 (-105)", awayML: "+237", homeSpread: "-6.5 (-115)", homeML: "-290" },
+  "2_NYG_LAR": { awaySpread: "+7.5 (-120)", awayML: "+280", homeSpread: "-7.5 (+100)", homeML: "-350" },
+  "2_DET_BUF": { awaySpread: "+5 (-106)", awayML: "+192", homeSpread: "-5 (-114)", homeML: "-230" },
+  "2_GB_NYJ": { awaySpread: "-3.5 (-105)", awayML: "-175", homeSpread: "+3.5 (-115)", homeML: "+153" },
+  "2_MIN_CHI": { awaySpread: "+5 (-114)", awayML: "+195", homeSpread: "-5 (-106)", homeML: "-235" },
+  "2_PIT_NE": { awaySpread: "+5 (-110)", awayML: "+200", homeSpread: "-5 (-110)", homeML: "-240" },
+  "2_CAR_ATL": { awaySpread: "-2.5 (-115)", awayML: "-145", homeSpread: "+2.5 (-105)", homeML: "+125" },
+  "2_CLE_TB": { awaySpread: "+8.5 (-115)", awayML: "+320", homeSpread: "-8.5 (-105)", homeML: "-405" },
 };
 
 const state = {
