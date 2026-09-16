@@ -76,17 +76,6 @@ async function init() {
   listenToConfig();
   renderInAppBrowserWarning();
 
-  // Surfaces errors from the signInWithRedirect flow (e.g. a blocked in-app browser) —
-  // onAuthStateChanged alone would just silently never fire with a user.
-  try {
-    auth.getRedirectResult().catch(e => {
-      console.error("Google redirect sign-in failed", e);
-      toast(e.message);
-    });
-  } catch (e) {
-    console.error("Could not check redirect result — is js/firebase-config.js set up?", e);
-  }
-
   try {
     const info = await fetchCurrentWeekInfo();
     state.espnWeek = info.week;
@@ -278,11 +267,8 @@ function listenToAuth() {
   }
 }
 
-// Redirect (not popup) — far more reliable on mobile, and degrades to a visible Google error
-// page instead of a silent blank-page hang inside in-app browsers (Instagram/Snapchat/TikTok/etc,
-// which Google blocks from completing sign-in at all — see isInAppBrowser() below).
 function signInWithGoogle() {
-  auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider()).catch(e => toast(e.message));
+  auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(e => toast(e.message));
 }
 
 function isInAppBrowser() {
