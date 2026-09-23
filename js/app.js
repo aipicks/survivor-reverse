@@ -55,6 +55,23 @@ const FALLBACK_ODDS = {
   "2_PIT_NE": { awaySpread: "+5 (-110)", awayML: "+200", homeSpread: "-5 (-110)", homeML: "-240" },
   "2_CAR_ATL": { awaySpread: "-2.5 (-115)", awayML: "-145", homeSpread: "+2.5 (-105)", homeML: "+125" },
   "2_CLE_TB": { awaySpread: "+8.5 (-115)", awayML: "+320", homeSpread: "-8.5 (-105)", homeML: "-405" },
+
+  "3_LAR_DEN": { awaySpread: "-2.5 (-114)", awayML: "-142", homeSpread: "+2.5 (-106)", homeML: "+120" },
+  "3_PHI_CHI": { awaySpread: "-4.5 (-115)", awayML: "-235", homeSpread: "+4.5 (-105)", homeML: "+194" },
+  "3_CIN_PIT": { awaySpread: "-3.5 (-108)", awayML: "-190", homeSpread: "+3.5 (-112)", homeML: "+160" },
+  "3_SEA_WSH": { awaySpread: "-7 (-115)", awayML: "-340", homeSpread: "+7 (-105)", homeML: "+275" },
+  "3_TEN_NYG": { awaySpread: "+2.5 (-102)", awayML: "+128", homeSpread: "-2.5 (-120)", homeML: "-152" },
+  "3_ARI_SF": { awaySpread: "+8.5 (-105)", awayML: "+370", homeSpread: "-8.5 (-115)", homeML: "-480" },
+  "3_MIN_TB": { awaySpread: "-1.5 (-110)", awayML: "-124", homeSpread: "+1.5 (-110)", homeML: "+106" },
+  "3_BAL_DAL": { awaySpread: "-3.5 (-102)", awayML: "-178", homeSpread: "+3.5 (-120)", homeML: "+150" },
+  "3_LV_NO": { awaySpread: "+3 (-108)", awayML: "+142", homeSpread: "-3 (-112)", homeML: "-168" },
+  "3_ATL_GB": { awaySpread: "+5.5 (-115)", awayML: "+205", homeSpread: "-5.5 (-105)", homeML: "-250" },
+  "3_CAR_CLE": { awaySpread: "-2.5 (-115)", awayML: "-146", homeSpread: "+2.5 (-105)", homeML: "+124" },
+  "3_NYJ_DET": { awaySpread: "+6.5 (-102)", awayML: "+265", homeSpread: "-6.5 (-120)", homeML: "-330" },
+  "3_NE_JAX": { awaySpread: "+2.5 (+100)", awayML: "+132", homeSpread: "-2.5 (-122)", homeML: "-154" },
+  "3_HOU_IND": { awaySpread: "-2.5 (-118)", awayML: "-146", homeSpread: "+2.5 (-104)", homeML: "+124" },
+  "3_LAC_BUF": { awaySpread: "+7.5 (-120)", awayML: "+300", homeSpread: "-7.5 (-102)", homeML: "-375" },
+  "3_KC_MIA": { awaySpread: "-10.5 (-118)", awayML: "-770", homeSpread: "+10.5 (-104)", homeML: "+540" },
 };
 
 // Everyone else is out of the original pool. Chaz and Cole play a separate season-long
