@@ -57,6 +57,36 @@ const FALLBACK_ODDS = {
   "2_CLE_TB": { awaySpread: "+8.5 (-115)", awayML: "+320", homeSpread: "-8.5 (-105)", homeML: "-405" },
 };
 
+// Everyone else is out of the original pool. Chaz and Cole play a separate season-long
+// confidence contest instead: weeks 3-17, two "pick to lose" teams a week (worth 2 points and
+// 1 point based on confidence), never reusing a team (including the one each already used in
+// the original pool, weeks 1-2).
+const H2H_PLAYER_UIDS = {
+  "MDlJqN3ttHRvl3WMUBU4mBmonYq2": "Chaz",
+  "zLBQwHbSEiZT5kbeox0iZkSXxFq1": "Cole",
+};
+const H2H_START_WEEK = 3;
+const H2H_END_WEEK = 17;
+
+const TEAMS_MASTER = [
+  { abbr: "ARI", name: "Cardinals" }, { abbr: "ATL", name: "Falcons" },
+  { abbr: "BAL", name: "Ravens" }, { abbr: "BUF", name: "Bills" },
+  { abbr: "CAR", name: "Panthers" }, { abbr: "CHI", name: "Bears" },
+  { abbr: "CIN", name: "Bengals" }, { abbr: "CLE", name: "Browns" },
+  { abbr: "DAL", name: "Cowboys" }, { abbr: "DEN", name: "Broncos" },
+  { abbr: "DET", name: "Lions" }, { abbr: "GB", name: "Packers" },
+  { abbr: "HOU", name: "Texans" }, { abbr: "IND", name: "Colts" },
+  { abbr: "JAX", name: "Jaguars" }, { abbr: "KC", name: "Chiefs" },
+  { abbr: "LAC", name: "Chargers" }, { abbr: "LAR", name: "Rams" },
+  { abbr: "LV", name: "Raiders" }, { abbr: "MIA", name: "Dolphins" },
+  { abbr: "MIN", name: "Vikings" }, { abbr: "NE", name: "Patriots" },
+  { abbr: "NO", name: "Saints" }, { abbr: "NYG", name: "Giants" },
+  { abbr: "NYJ", name: "Jets" }, { abbr: "PHI", name: "Eagles" },
+  { abbr: "PIT", name: "Steelers" }, { abbr: "SEA", name: "Seahawks" },
+  { abbr: "SF", name: "49ers" }, { abbr: "TB", name: "Buccaneers" },
+  { abbr: "TEN", name: "Titans" }, { abbr: "WSH", name: "Commanders" },
+];
+
 const state = {
   currentUser: null,
   needsName: false,      // true right after a first-time Google sign-in, until they pick a display name
@@ -72,6 +102,7 @@ const state = {
   weekCache: {},         // week -> games[]
   allPicks: {},          // "playerId_week" -> pick doc
   allOdds: {},           // "week_awayAbbr_homeAbbr" -> odds doc
+  allH2HPicks: {},       // "playerId_week" -> { playerId, week, picks: [{teamAbbr, gameId, oppAbbr, gameDate, points}, ...] }
 };
 
 function toast(msg) {
@@ -89,6 +120,7 @@ async function init() {
   listenToPlayers();
   listenToPicks();
   listenToOdds();
+  listenToH2HPicks();
   listenToAuth();
   listenToConfig();
   renderInAppBrowserWarning();
@@ -231,6 +263,20 @@ function listenToOdds() {
       snap.docChanges().forEach(change => {
         if (change.type === "removed") delete state.allOdds[change.doc.id];
         else state.allOdds[change.doc.id] = change.doc.data();
+      });
+      render();
+    }, onError);
+  });
+}
+
+function listenToH2HPicks() {
+  attachWithRetry("h2hPicks", (onError) => {
+    db.collection("h2hPicks").onSnapshot(snap => {
+      snap.docChanges().forEach(change => {
+        const d = change.doc.data();
+        const key = `${d.playerId}_${d.week}`;
+        if (change.type === "removed") delete state.allH2HPicks[key];
+        else state.allH2HPicks[key] = d;
       });
       render();
     }, onError);
@@ -450,6 +496,56 @@ function usedTeams(playerId, uptoWeekExclusive) {
   return used;
 }
 
+// --- Head-to-Head confidence pool (Chaz vs Cole, weeks 3-17) ---
+
+function getH2HPick(playerId, week) {
+  return state.allH2HPicks[`${playerId}_${week}`];
+}
+
+// Every team this player has ever picked to lose — their two original-pool picks (weeks 1-2)
+// plus every Head-to-Head pick since — so nobody can pick the same team twice across either format.
+function h2hUsedTeams(playerId) {
+  const used = new Set();
+  [1, 2].forEach(w => {
+    const p = getPick(playerId, w);
+    if (p) used.add(p.teamAbbr);
+  });
+  for (let w = H2H_START_WEEK; w <= H2H_END_WEEK; w++) {
+    const h = getH2HPick(playerId, w);
+    if (h) h.picks.forEach(pk => used.add(pk.teamAbbr));
+  }
+  return used;
+}
+
+function h2hTotal(playerId) {
+  let total = 0;
+  for (let w = H2H_START_WEEK; w <= H2H_END_WEEK; w++) {
+    const h = getH2HPick(playerId, w);
+    const games = state.weekCache[w];
+    if (!h || !games) continue;
+    h.picks.forEach(pk => {
+      const game = games.find(g => g.id === pk.gameId);
+      if (game && game.completed) {
+        const team = game.home.abbr === pk.teamAbbr ? game.home : game.away;
+        if (team.winner === false) total += pk.points;
+      }
+    });
+  }
+  return total;
+}
+
+async function saveH2HPicks(playerId, week, picks) {
+  try {
+    await db.collection("h2hPicks").doc(`${playerId}_${week}`).set({
+      playerId, week, picks,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    toast(`Week ${week} picks saved.`);
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
 // Walk a player's history to compute record + elimination status.
 function computePlayerStatus(playerId) {
   let wins = 0, losses = 0, eliminated = false, eliminatedWeek = null;
@@ -528,6 +624,7 @@ function render() {
   if (state.activeView === "home") return renderHome(content);
   if (state.activeView === "entries") return renderEntries(content);
   if (state.activeView === "standings") return renderStandings(content);
+  if (state.activeView === "h2h") return renderH2H(content);
   if (state.activeView === "admin") return renderAdmin(content);
 }
 
@@ -826,79 +923,165 @@ function renderEntries(content) {
     ${rows}`;
 }
 
-// This week's pick, shown only once locked (that game has kicked off) — never before,
-// so nobody can see (and copy) another player's pick while it's still changeable.
-function currentWeekPickLine(playerId) {
-  const week = state.currentWeek;
-  const pick = getPick(playerId, week);
-  if (!pick) return null;
-
-  const games = state.weekCache[week];
-  const game = games && games.find(g => g.id === pick.gameId);
-  if (!game) return null;
-
-  const locked = new Date(game.date) <= new Date();
-  if (!locked) return null;
-
-  const team = game.home.abbr === pick.teamAbbr ? game.home : game.away;
-  let mark = "";
-  if (game.completed) mark = team.winner === false ? " ✔" : " ✗"; // win or tie for the picked team = miss
-
-  return `Week ${week} pick: ${team.name}${mark}`;
+// Reveal a player's Head-to-Head picks for a week — each individual pick stays hidden until
+// its own game kicks off, same secrecy rule as the original pool.
+function h2hRevealLine(playerId, week) {
+  const h = getH2HPick(playerId, week);
+  if (!h) return "No picks yet";
+  const games = state.weekCache[week] || [];
+  return h.picks.map(pk => {
+    const game = games.find(g => g.id === pk.gameId);
+    if (!game) return `${pk.points}pt pick`;
+    if (new Date(game.date) > new Date()) return `🔒 ${pk.points}pt pick hidden`;
+    const team = game.home.abbr === pk.teamAbbr ? game.home : game.away;
+    let mark = "";
+    if (game.completed) mark = team.winner === false ? " ✔" : " ✗";
+    return `${team.name} (${pk.points}pt)${mark}`;
+  }).join(" · ");
 }
 
-// One chip per completed week (before the current one) — ✓ if they were still alive after that
-// week, ✗ if that's the week they got eliminated. Weeks after an elimination are left off.
-function weekHistoryChips(playerId) {
-  const chips = [];
-  for (let w = 1; w < state.currentWeek; w++) {
-    const games = state.weekCache[w];
-    if (!games || !games.length || !games.every(g => g.completed)) continue;
+function h2hTeamsGrid(playerId) {
+  const used = h2hUsedTeams(playerId);
+  return TEAMS_MASTER.map(t =>
+    `<span class="h2h-team-chip ${used.has(t.abbr) ? "h2h-used" : "h2h-remaining"}">${t.abbr}</span>`
+  ).join("");
+}
 
-    const pick = getPick(playerId, w);
-    let survived;
-    if (!pick) {
-      survived = false;
-    } else {
-      const game = games.find(g => g.id === pick.gameId);
-      if (!game) continue;
-      const team = game.home.abbr === pick.teamAbbr ? game.home : game.away;
-      survived = team.winner === false; // win or tie for the picked team = a miss
-    }
-    chips.push({ week: w, ok: survived });
-    if (!survived) break; // no further weeks matter once eliminated
+function renderH2HPickForm(week, playerId) {
+  const games = state.weekCache[week] || [];
+  const used = h2hUsedTeams(playerId);
+  const existing = getH2HPick(playerId, week);
+  const existingPicks = existing ? existing.picks : [null, null];
+
+  const optionsHtml = (slotIndex) => {
+    const thisAbbr = existingPicks[slotIndex] ? existingPicks[slotIndex].teamAbbr : null;
+    const otherAbbr = existingPicks[1 - slotIndex] ? existingPicks[1 - slotIndex].teamAbbr : null;
+    let html = '<option value="">— choose —</option>';
+    games.forEach(g => {
+      [g.away, g.home].forEach(team => {
+        if (team.abbr === otherAbbr) return; // can't pick the same team for both slots
+        if (used.has(team.abbr) && team.abbr !== thisAbbr) return; // already used by this player
+        const started = new Date(g.date) <= new Date();
+        if (started && team.abbr !== thisAbbr) return; // can't newly pick an already-started game
+        const selected = team.abbr === thisAbbr ? "selected" : "";
+        html += `<option value="${team.abbr}|${g.id}" ${selected}>${team.name}</option>`;
+      });
+    });
+    return html;
+  };
+
+  const slotLocked = (slotIndex) => existingPicks[slotIndex] && new Date(existingPicks[slotIndex].gameDate) <= new Date();
+
+  return `
+    <div class="h2h-pick-form">
+      <div class="h2h-slot">
+        <label>2-point pick (most confident)</label>
+        <select id="h2hSlot2" ${slotLocked(0) ? "disabled" : ""}>${optionsHtml(0)}</select>
+        ${slotLocked(0) ? '<span class="pick-badge locked">Locked</span>' : ""}
+      </div>
+      <div class="h2h-slot">
+        <label>1-point pick</label>
+        <select id="h2hSlot1" ${slotLocked(1) ? "disabled" : ""}>${optionsHtml(1)}</select>
+        ${slotLocked(1) ? '<span class="pick-badge locked">Locked</span>' : ""}
+      </div>
+      ${!slotLocked(0) || !slotLocked(1) ? '<button id="h2hSaveBtn" class="btn-primary">Save Picks</button>' : ""}
+    </div>`;
+}
+
+function wireH2HPickForm(content, week, playerId) {
+  const saveBtn = content.querySelector("#h2hSaveBtn");
+  if (!saveBtn) return;
+  saveBtn.addEventListener("click", () => {
+    const games = state.weekCache[week] || [];
+    const v2 = content.querySelector("#h2hSlot2").value;
+    const v1 = content.querySelector("#h2hSlot1").value;
+    if (!v2 || !v1) { toast("Pick both a 2-point and 1-point team."); return; }
+
+    const buildPick = (value, points) => {
+      const [abbr, gameId] = value.split("|");
+      const game = games.find(g => g.id === gameId);
+      const team = game.home.abbr === abbr ? game.home : game.away;
+      const opp = game.home.abbr === abbr ? game.away : game.home;
+      return { teamAbbr: abbr, gameId, oppAbbr: opp.abbr, gameDate: game.date, points };
+    };
+
+    saveH2HPicks(playerId, week, [buildPick(v2, 2), buildPick(v1, 1)]);
+  });
+}
+
+function renderH2H(content) {
+  const uids = Object.keys(H2H_PLAYER_UIDS);
+  const week = state.activeWeek;
+
+  const header = `
+    <div class="h2h-header">
+      <div class="h2h-title">🏆 Head-to-Head: ${uids.map(uid => H2H_PLAYER_UIDS[uid]).join(" vs ")}</div>
+      <div class="h2h-scores">
+        ${uids.map(uid => `
+          <div class="h2h-score">
+            <span class="h2h-score-name">${H2H_PLAYER_UIDS[uid]}</span>
+            <span class="h2h-score-num">${h2hTotal(uid)}</span>
+          </div>`).join("")}
+      </div>
+    </div>`;
+
+  if (week < H2H_START_WEEK || week > H2H_END_WEEK) {
+    content.innerHTML = header + `<div class="hint">Head-to-Head runs Weeks ${H2H_START_WEEK}–${H2H_END_WEEK}.</div>`;
+    return;
   }
-  return chips;
+
+  const isParticipant = !!H2H_PLAYER_UIDS[state.playerId];
+  const formHtml = isParticipant
+    ? `<div class="section-title">Your Week ${week} Picks</div>${renderH2HPickForm(week, state.playerId)}`
+    : "";
+
+  const statusHtml = `
+    <div class="section-title">Week ${week} Status</div>
+    ${uids.map(uid => `
+      <div class="standings-row">
+        <div class="standings-main">
+          <div class="standings-name">${H2H_PLAYER_UIDS[uid]}</div>
+        </div>
+        <div class="standings-pick">${h2hRevealLine(uid, week)}</div>
+      </div>`).join("")}`;
+
+  const teamsHtml = uids.map(uid => `
+    <div class="section-title">${H2H_PLAYER_UIDS[uid]}'s teams</div>
+    <div class="h2h-teams-grid">${h2hTeamsGrid(uid)}</div>`).join("");
+
+  content.innerHTML = header + formHtml + statusHtml + teamsHtml;
+
+  if (isParticipant) wireH2HPickForm(content, week, state.playerId);
 }
 
 function renderStandings(content) {
-  const rows = state.players.map(p => {
-    const status = computePlayerStatus(p.id);
-    return { ...p, ...status, pickLine: currentWeekPickLine(p.id), history: weekHistoryChips(p.id) };
-  }).sort((a, b) => {
-    if (a.eliminated !== b.eliminated) return a.eliminated ? 1 : -1;
-    return (b.wins - b.losses) - (a.wins - a.losses);
-  });
+  const h2hPlayers = state.players.filter(p => H2H_PLAYER_UIDS[p.id]);
+  const others = state.players.filter(p => !H2H_PLAYER_UIDS[p.id]);
+
+  const h2hSection = h2hPlayers.length ? `
+    <div class="h2h-banner">🏆 Head-to-Head Matchup</div>
+    ${h2hPlayers.map(p => `
+      <div class="standings-row standings-row-h2h">
+        <div class="standings-main">
+          <div class="standings-name">${p.name}</div>
+          <div class="h2h-points">${h2hTotal(p.id)} pts</div>
+        </div>
+      </div>`).join("")}
+  ` : "";
+
+  const othersSection = others.map(p => `
+    <div class="standings-row standings-row-out">
+      <div class="standings-main">
+        <div class="standings-name">${p.name}</div>
+        <div class="standings-out-label">— OUT —</div>
+      </div>
+      <div class="standings-out-sublabel">Better luck next year!</div>
+    </div>`).join("");
 
   content.innerHTML = `
     <div class="section-title">Standings — Week ${state.currentWeek}</div>
-    ${rows.map(p => `
-      <div class="standings-row ${p.eliminated ? "standings-row-eliminated" : ""}">
-        <div class="standings-main">
-          <div class="standings-name">${p.name}</div>
-          <div class="${p.eliminated ? "status-dead" : "status-alive"}">${p.eliminated ? "Eliminated" : "Alive"}</div>
-          <div class="record">${p.wins}-${p.losses}</div>
-        </div>
-        ${p.history.length ? `
-          <div class="week-history">
-            ${p.history.map(h => `
-              <div class="week-chip">
-                <span class="week-chip-label">Week ${h.week}</span>
-                <span class="week-chip-mark ${h.ok ? "week-chip-ok" : "week-chip-bad"}">${h.ok ? "✓" : "✗"}</span>
-              </div>`).join("")}
-          </div>` : ""}
-        ${p.pickLine ? `<div class="standings-pick">${p.pickLine}</div>` : ""}
-      </div>`).join("")}`;
+    ${h2hSection}
+    ${others.length ? `<div class="section-title">Eliminated</div>${othersSection}` : ""}`;
 }
 
 init();

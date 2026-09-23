@@ -24,6 +24,10 @@ service cloud.firestore {
     function isAdmin() {
       return request.auth != null && request.auth.token.email in ['edenchaz@gmail.com'];
     }
+    // Keep this in sync with H2H_PLAYER_UIDS in js/app.js.
+    function isH2HPlayer() {
+      return request.auth != null && request.auth.uid in ['MDlJqN3ttHRvl3WMUBU4mBmonYq2', 'zLBQwHbSEiZT5kbeox0iZkSXxFq1'];
+    }
 
     match /players/{playerId} {
       allow read: if true;
@@ -47,6 +51,12 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if request.auth != null; // gated to admins in the UI, not by rule
       allow delete: if false;
+    }
+    match /h2hPicks/{docId} {
+      allow read: if true;
+      // Only the two Head-to-Head players can write their own picks; admins can fix mistakes.
+      allow create, update: if (isH2HPlayer() && request.auth.uid == request.resource.data.playerId) || isAdmin();
+      allow delete: if isAdmin();
     }
   }
 }
