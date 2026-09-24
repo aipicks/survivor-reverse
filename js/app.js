@@ -594,45 +594,6 @@ function computePlayerStatus(playerId) {
   return { wins, losses, eliminated, eliminatedWeek };
 }
 
-async function makePick(week, game, team) {
-  if (!state.playerId) { toast("Log in first."); return; }
-  if (week !== state.currentWeek) { toast("You can only pick for the current week."); return; }
-
-  const status = computePlayerStatus(state.playerId);
-  if (status.eliminated) { toast("You're eliminated — no more picks."); return; }
-
-  const kickoff = new Date(game.date);
-  if (kickoff <= new Date()) { toast("That game has already started."); return; }
-
-  const existing = getPick(state.playerId, week);
-  if (existing) {
-    const existingGame = (state.weekCache[week] || []).find(g => g.id === existing.gameId);
-    if (existingGame && new Date(existingGame.date) <= new Date()) {
-      toast("Your pick for this week is already locked.");
-      return;
-    }
-  }
-
-  const used = usedTeams(state.playerId, week);
-  if (used.has(team.abbr) && !(existing && existing.teamAbbr === team.abbr)) {
-    toast(`You've already picked the ${team.name} to lose in a previous week.`);
-    return;
-  }
-
-  const opp = game.home.abbr === team.abbr ? game.away : game.home;
-  const docId = `${state.playerId}_${week}`;
-  await db.collection("picks").doc(docId).set({
-    playerId: state.playerId,
-    week,
-    gameId: game.id,
-    teamAbbr: team.abbr,
-    oppAbbr: opp.abbr,
-    gameDate: game.date,
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  toast(`Locked in: ${team.name} to lose in Week ${week}.`);
-}
-
 // --- Rendering ---
 
 function render() {
@@ -810,39 +771,23 @@ function renderAdmin(content) {
   });
 }
 
+// The original pool is over (Chaz/Cole moved to Head-to-Head) — Home is read-only from here on:
+// games and odds only, no picking. myPick/myUsed still drive the historical badges from weeks 1-2.
 function renderHome(content) {
   const week = state.activeWeek;
   const games = state.weekCache[week];
   if (!games) { content.innerHTML = '<div class="hint">Loading matchups…</div>'; return; }
   if (!games.length) { content.innerHTML = '<div class="hint">No games found for this week.</div>'; return; }
 
-  const isCurrentWeek = week === state.currentWeek;
   const myPick = state.playerId ? getPick(state.playerId, week) : null;
   const myUsed = state.playerId ? usedTeams(state.playerId, week) : new Set();
-  const myStatus = state.playerId ? computePlayerStatus(state.playerId) : null;
 
-  const banner = myStatus && myStatus.eliminated
-    ? `<div class="eliminated-banner">❌ You were eliminated in Week ${myStatus.eliminatedWeek} — no more picks this season.</div>`
-    : "";
-
-  content.innerHTML = banner + games.map(g => renderMatchup(g, week, isCurrentWeek, myPick, myUsed, myStatus)).join("");
-
-  content.querySelectorAll("[data-pick]").forEach(row => {
-    row.addEventListener("click", () => {
-      const gameId = row.dataset.gameId;
-      const teamAbbr = row.dataset.pick;
-      const game = games.find(g => g.id === gameId);
-      const team = game.home.abbr === teamAbbr ? game.home : game.away;
-      makePick(week, game, team);
-    });
-  });
-
+  content.innerHTML = games.map(g => renderMatchup(g, week, myPick, myUsed)).join("");
 }
 
-function renderMatchup(g, week, isCurrentWeek, myPick, myUsed, myStatus) {
+function renderMatchup(g, week, myPick, myUsed) {
   const started = new Date(g.date) <= new Date();
-  const eliminated = !!(myStatus && myStatus.eliminated);
-  const canPick = isCurrentWeek && !started && state.playerId && !eliminated;
+  const canPick = false;
   const odds = getOdds(week, g.away.abbr, g.home.abbr);
 
   const rowHtml = (team, opp, isAway) => {
