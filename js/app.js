@@ -907,7 +907,7 @@ function h2hRevealLine(playerId, week) {
 }
 
 function h2hTeamsGrid(playerId) {
-  const used = h2hUsedTeams(playerId, playerId !== state.playerId);
+  const used = h2hUsedTeams(playerId, true);
   return TEAMS_MASTER.map(t =>
     `<span class="h2h-team-chip ${used.has(t.abbr) ? "h2h-used" : "h2h-remaining"}">${t.abbr}</span>`
   ).join("");
