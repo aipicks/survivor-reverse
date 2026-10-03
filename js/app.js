@@ -521,15 +521,19 @@ function getH2HPick(playerId, week) {
 
 // Every team this player has ever picked to lose — their two original-pool picks (weeks 1-2)
 // plus every Head-to-Head pick since — so nobody can pick the same team twice across either format.
-function h2hUsedTeams(playerId) {
+// revealedOnly: only count picks whose game has kicked off — used when showing someone else's
+// teams, so an unlocked pick (which could still change) never leaks as "used".
+function h2hUsedTeams(playerId, revealedOnly = false) {
+  const now = new Date();
+  const visible = (pick) => !revealedOnly || new Date(pick.gameDate) <= now;
   const used = new Set();
   [1, 2].forEach(w => {
     const p = getPick(playerId, w);
-    if (p) used.add(p.teamAbbr);
+    if (p && visible(p)) used.add(p.teamAbbr);
   });
   for (let w = H2H_START_WEEK; w <= H2H_END_WEEK; w++) {
     const h = getH2HPick(playerId, w);
-    if (h) h.picks.forEach(pk => used.add(pk.teamAbbr));
+    if (h) h.picks.forEach(pk => { if (visible(pk)) used.add(pk.teamAbbr); });
   }
   return used;
 }
@@ -903,7 +907,7 @@ function h2hRevealLine(playerId, week) {
 }
 
 function h2hTeamsGrid(playerId) {
-  const used = h2hUsedTeams(playerId);
+  const used = h2hUsedTeams(playerId, playerId !== state.playerId);
   return TEAMS_MASTER.map(t =>
     `<span class="h2h-team-chip ${used.has(t.abbr) ? "h2h-used" : "h2h-remaining"}">${t.abbr}</span>`
   ).join("");
